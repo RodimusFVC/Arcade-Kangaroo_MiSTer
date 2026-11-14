@@ -7,16 +7,15 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/kangaroo_dispatcher.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/boards/kangaroo/Kangaroo_CPU.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/boards/kangaroo/Kangaroo_SND.sv
 
-set_global_assignment -name QIP_FILE rtl/cpu/T80/T80.qip
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/rodimus/t80sv/t80sv_all.sv
 set_global_assignment -name QIP_FILE rtl/sound/jt49/hdl/jt49.qip
 
 set_global_assignment -name VERILOG_FILE rtl/mister_custom/pause.v
 set_global_assignment -name VERILOG_FILE rtl/mister_custom/hiscore.v
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/mister_custom/controllers.sv
 
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/mb88_sv/mb88_core.sv
-set_global_assignment -name SYSTEMVERILOG_FILE rtl/cpu/mb88_sv/mb88.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/rodimus/mb88/mb88_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/rodimus/mb88/mb88.sv
 
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram_rom/dpram_dc.sv
-set_global_assignment -name VHDL_FILE rtl/ram_rom/spram.vhd
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/ram_rom/rom_loader.sv

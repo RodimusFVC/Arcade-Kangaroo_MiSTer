@@ -1,7 +1,7 @@
 //============================================================================
 //
 //  Kangaroo ROM loader
-//  ROM layout matched to MAME kangaroo.cpp
+// Based on MAME kangaroo.cpp (Ville Laitinen, Aaron Giles, BSD-3-Clause)
 //
 //============================================================================
 

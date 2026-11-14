@@ -1,38 +1,27 @@
-//============================================================================
-//
-//  Kangaroo dispatcher: ROM load map, shared CPU / MCU / AY / ROM / RAM pools, and the boards (rtl/boards/kangaroo/)
 //  Copyright (C) 2026 Rodimus
-//  Based on MAME kangaroo.cpp
-//
-//============================================================================
+// Based on MAME kangaroo.cpp (Ville Laitinen, Aaron Giles, BSD-3-Clause)
 
 module kangaroo_dispatcher
 (
     input                reset,
     input                clk_10m,
 
-    // Player inputs (active HIGH)
     input          [4:0] in0,              // {coin_r, coin_l, start2, start1, service}
-    // in1 is 8 bits wide; bits 7:5 are unused on this board.
     input          [7:0] in1,              // {3'b0, punch, down, up, left, right} P1
     input          [7:0] in2,              // {punch, down, up, left, right} P2
-    input          [7:0] dsw0,             // 8-bit DIP switch
+    input          [7:0] dsw0,
 
-    // Video outputs
     output               video_hsync, video_vsync,
     output               video_hblank, video_vblank,
     output               ce_pix,
 
-    // DIAG-REVERT-2026-09-01: OSD Screen Centering, passed straight to Kangaroo_CPU
     input          [3:0] h_center,
     input          [2:0] v_center,
     output         [7:0] video_r, video_g, video_b,
 
-    // Audio
     output signed [15:0] sound_l,
     output signed [15:0] sound_r,
 
-    // ROM loading
     input         [24:0] ioctl_addr,
     input          [7:0] ioctl_data,
     input                ioctl_wr,
@@ -41,19 +30,14 @@ module kangaroo_dispatcher
     input                pause,
     input                crt_flip,
 
-    // MB8841 MCU present (original Kangaroo HW). From MRA index-5 game-select byte bit1.
     input                mcu_present,
 
-    // Hiscore (stubbed)
     input         [15:0] hs_address,
     input          [7:0] hs_data_in,
     output         [7:0] hs_data_out,
     input                hs_write
 );
 
-//------------------------------------------------------- ROM Selectors -------------------------------------------------------//
-
-// Main CPU ROMs (index 0)
 wire rom0_cs, rom1_cs, rom2_cs, rom3_cs, rom4_cs, rom5_cs;
 wire idx0_wr = ioctl_wr & (ioctl_index == 8'd0);
 selector main_sel
@@ -63,14 +47,11 @@ selector main_sel
     .rom3_cs(rom3_cs), .rom4_cs(rom4_cs), .rom5_cs(rom5_cs)
 );
 
-// Sound ROM (index 1) — single 4KB, no selector needed
 wire sndrom_cs = (ioctl_index == 8'd1);
 wire idx1_wr = ioctl_wr & sndrom_cs;
 
-// MCU ROMs (index 6: MB8841 prog 0x000-0x7FF + protection PROM 0x800-0xFFF)
 wire idx6_wr = ioctl_wr & (ioctl_index == 8'd6);
 
-// Blitter ROMs (index 2)
 wire blit0_cs, blit1_cs, blit2_cs, blit3_cs;
 wire idx2_wr = ioctl_wr & (ioctl_index == 8'd2);
 blit_selector blit_sel
@@ -80,10 +61,7 @@ blit_selector blit_sel
     .blit2_cs(blit2_cs), .blit3_cs(blit3_cs)
 );
 
-
 /////////////////////////////  Shared CPU / MCU / sound chip pool  /////////////////////////////
-// z80_0 = main Z80, z80_1 = sound Z80 (T80s, Mode 0, T2Write 1, IOWait 1), mb88_0 = MB8841 (kangaroo / kangarooa only),
-// ay_0 = AY-3-8910 (jt49_bus COMP 3'b010). Resets are on the buses (the MB8841 is held in reset when not fitted).
 chip_pool_pkg::z80r_i_t z80_0_i, z80_1_i;
 chip_pool_pkg::z80r_o_t z80_0_o, z80_1_o;
 chip_pool_pkg::mb88_i_t mb88_0_i;
@@ -91,14 +69,14 @@ chip_pool_pkg::mb88_o_t mb88_0_o;
 chip_pool_pkg::ayr_i_t  ay_0_i;
 chip_pool_pkg::ay_o_t   ay_0_o;
 
-T80s #(.Mode(0), .T2Write(1), .IOWait(1)) z80_0
+t80sv_T80s #(.Mode(0), .T2Write(1), .IOWait(1)) z80_0
 (
     .RESET_n(z80_0_i.reset_n), .CLK(clk_10m), .CEN(z80_0_i.ce), .INT_n(z80_0_i.int_n), .NMI_n(z80_0_i.nmi_n), .BUSRQ_n(1'b1),
     .M1_n(z80_0_o.m1_n), .MREQ_n(z80_0_o.mreq_n), .IORQ_n(z80_0_o.iorq_n), .RD_n(z80_0_o.rd_n), .WR_n(z80_0_o.wr_n),
     .RFSH_n(z80_0_o.rfsh_n), .A(z80_0_o.a), .DI(z80_0_i.di), .DO(z80_0_o.dout)
 );
 
-T80s #(.Mode(0), .T2Write(1), .IOWait(1)) z80_1
+t80sv_T80s #(.Mode(0), .T2Write(1), .IOWait(1)) z80_1
 (
     .RESET_n(z80_1_i.reset_n), .CLK(clk_10m), .CEN(z80_1_i.ce), .INT_n(z80_1_i.int_n), .NMI_n(z80_1_i.nmi_n), .BUSRQ_n(1'b1),
     .M1_n(z80_1_o.m1_n), .MREQ_n(z80_1_o.mreq_n), .IORQ_n(z80_1_o.iorq_n), .RD_n(z80_1_o.rd_n), .WR_n(z80_1_o.wr_n),
@@ -127,7 +105,6 @@ jt49_bus #(.COMP(3'b010)) ay_0
 );
 
 /////////////////////////////  Shared ROM blocks  /////////////////////////////
-// port A = the board's read, port B = the download (index 0 program, 2 blitter, 6 MB8841, 1 sound)
 
 wire [11:0] rom_cpu_a, snd_rom_a;
 wire [13:0] blitrom_a;
@@ -142,13 +119,11 @@ eprom_4k rom3 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(rom3_d), .ADDR_DL(ioctl_ad
 eprom_4k rom4 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(rom4_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(rom4_cs & idx0_wr), .WR(ioctl_wr));
 eprom_4k rom5 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(rom5_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(rom5_cs & idx0_wr), .WR(ioctl_wr));
 
-// the CPU's blitter-ROM window (C000-DFFF, banked)
 eprom_4k blit0 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(blit0_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(blit0_cs & idx2_wr), .WR(ioctl_wr));
 eprom_4k blit1 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(blit1_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(blit1_cs & idx2_wr), .WR(ioctl_wr));
 eprom_4k blit2 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(blit2_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(blit2_cs & idx2_wr), .WR(ioctl_wr));
 eprom_4k blit3 (.ADDR(rom_cpu_a), .CLK(clk_10m), .DATA(blit3_d), .ADDR_DL(ioctl_addr), .CLK_DL(clk_10m), .DATA_IN(ioctl_data), .CS_DL(blit3_cs & idx2_wr), .WR(ioctl_wr));
 
-// the blitter's own 16K copy: blit0 -> 0000, blit1 -> 1000, blit2 -> 2000, blit3 -> 3000
 wire blit0_wr = blit0_cs & idx2_wr, blit1_wr = blit1_cs & idx2_wr, blit2_wr = blit2_cs & idx2_wr, blit3_wr = blit3_cs & idx2_wr;
 wire [13:0] blitrom_dl_addr = blit0_wr ? {2'b00, ioctl_addr[11:0]} :
                                blit1_wr ? {2'b01, ioctl_addr[11:0]} :
@@ -162,7 +137,6 @@ dpram_dc #(.widthad_a(14), .width_a(8)) blitrom_mem
     .clock_b(clk_10m), .address_b(blitrom_dl_addr), .data_b(ioctl_data), .wren_b(blitrom_dl_wr), .q_b()
 );
 
-// MB8841 program (index 6, 000-7FF) and protection PROM (800-FFF)
 dpram_dc #(.widthad_a(11), .width_a(8)) mcu_prog
 (
     .clock_a(clk_10m), .address_a(mcu_prog_a), .data_a(8'd0), .wren_a(1'b0), .q_a(mcu_prog_d),
@@ -180,7 +154,6 @@ eprom_4k sndrom (.ADDR(snd_rom_a), .CLK(clk_10m), .DATA(snd_rom_d), .ADDR_DL(ioc
 //   pr 0  1K   work RAM E000 (port B hiscore)
 //   pr 1-8 16K VRAM byte lanes: lo [7:0] / [15:8], hi [7:0] / [15:8], and the plane-B scanout mirrors lo2 / hi2
 //              (every VRAM write is a whole 16-bit word, so a lane pair is exactly the old 16-bit RAM)
-//   sp 0  1K   sound RAM 4000 (single-port spram, port A of pram_i_t: write-through read, as the private RAM was)
 ram_pool_pkg::pram_i_t [8:0] pr_i;
 ram_pool_pkg::pram_o_t [8:0] pr_o;
 ram_pool_pkg::pram_i_t       sp_i;
@@ -231,13 +204,12 @@ dpram_dc #(.widthad_a(14)) pr_8
     .clock_a(clk_10m), .address_a(pr_i[8].a_addr[13:0]), .data_a(pr_i[8].a_d), .wren_a(pr_i[8].a_we), .q_a(pr_o[8].a_q),
     .clock_b(clk_10m), .address_b(pr_i[8].b_addr[13:0]), .data_b(pr_i[8].b_d), .wren_b(pr_i[8].b_we), .q_b(pr_o[8].b_q)
 );
-spram #(.DATA_WIDTH(8), .ADDR_WIDTH(10)) sp_0
+dpram_dc #(.widthad_a(10)) sp_0
 (
-    .clk(clk_10m), .addr(sp_i.a_addr[9:0]), .data(sp_i.a_d), .q(sp_o.a_q), .we(sp_i.a_we)
+    .clock_a(clk_10m), .address_a(sp_i.a_addr[9:0]), .data_a(sp_i.a_d), .wren_a(sp_i.a_we), .q_a(sp_o.a_q),
+    .clock_b(clk_10m)
 );
 assign sp_o.b_q = 8'd0;
-
-//------------------------------------------------------- CPU Board -----------------------------------------------------------//
 
 wire [7:0] cpu_sound_latch;
 wire       cpu_sound_latch_wr;
@@ -258,8 +230,8 @@ Kangaroo_CPU cpu_board
     .video_vblank(video_vblank),
     .ce_pix(ce_pix),
 
-    .h_center(h_center),    // DIAG-REVERT-2026-09-01
-    .v_center(v_center),    // DIAG-REVERT-2026-09-01
+    .h_center(h_center),
+    .v_center(v_center),
 
     .dsw0(dsw0),
     .in0(in0),
@@ -287,8 +259,6 @@ Kangaroo_CPU cpu_board
     .pr_i(pr_i), .pr_o(pr_o)
 );
 
-//------------------------------------------------------- Sound Board ---------------------------------------------------------//
-
 wire signed [15:0] snd_mono;
 
 Kangaroo_SND snd_board
@@ -309,16 +279,9 @@ Kangaroo_SND snd_board
     .snd_rom_a(snd_rom_a), .snd_rom_d(snd_rom_d), .sp_i(sp_i), .sp_o(sp_o)
 );
 
-// Mono → stereo
 assign sound_l = snd_mono;
 assign sound_r = snd_mono;
 
-//------------------------------------------------------ RGB Expansion --------------------------------------------------------//
-
-// Expand BGR 3-bit (3R, 3G, 2B) to 8-bit per channel for MiSTer
-// R: 3 bits → 8 bits (replicate)
-// G: 3 bits → 8 bits (replicate)
-// B: 2 bits → 8 bits (replicate)
 assign video_r = {raw_r, raw_r, raw_r[2:1]};
 assign video_g = {raw_g, raw_g, raw_g[2:1]};
 assign video_b = {raw_b, raw_b, raw_b, raw_b};

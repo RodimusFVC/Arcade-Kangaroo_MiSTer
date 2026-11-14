@@ -38,7 +38,7 @@
         <dip bits="7"     name="Unknown" ids="On, Off"/>
     </switches>
 
-    <!-- Index 0: Main CPU ROMs (16KB — only 4 ROMs vs Kangaroo's 6) -->
+    <!-- Index 0: ROM -->
     <rom index="0" md5="none" zip="fnkyfish.zip">
         <part crc="af728803" name="tvg_64.0"/>
         <part crc="71959e6b" name="tvg_65.1"/>
@@ -47,12 +47,12 @@
 	<part repeat="0x2000">FF</part>
     </rom>
 
-    <!-- Index 1: Sound CPU ROM (4KB) -->
+    <!-- Index 1: ROM -->
     <rom index="1" md5="none" zip="fnkyfish.zip">
         <part crc="d36bb2be" name="tvg_68.8"/>
     </rom>
 
-    <!-- Index 2: Blitter GFX ROMs (16KB) -->
+    <!-- Index 2: ROM -->
     <rom index="2" md5="none" zip="fnkyfish.zip">
         <part crc="cd532d0b" name="tvg_69.v0"/>
         <part crc="a59c9713" name="tvg_71.v2"/>
@@ -60,16 +60,18 @@
         <part crc="6ae9b584" name="tvg_72.v3"/>
     </rom>
 
+	<!-- Index 3: Hiscore -->
 	<rom index="3" md5="none">
 		<part>
 		02 FA F0 80 00 FF 00 02 00 02 00 01 11 11 00 00
 		00 00 E0 30 00 09 00 00
 		</part>
 	</rom>
+	<!-- Index 4: NVRAM -->
 	<rom index="4"></rom>
 	<nvram index="4" size="9"></nvram>
 
-    <!-- Index 5: game-select mod byte. 01 = Funky Fish. Kangaroo MRAs omit this → core reads mod=0. -->
+    <!-- Index 5: Config -->
     <rom index="5"><part>01</part></rom>
 
     <remark>Funky Fish</remark>

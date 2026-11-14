@@ -46,15 +46,13 @@ assign HDMI_BOB_DEINT = 0;
 wire signed [15:0] audio_l, audio_r;
 assign AUDIO_L = pause_cpu ? 16'd0 : audio_l;
 assign AUDIO_R = pause_cpu ? 16'd0 : audio_r;
-assign AUDIO_S = 1;   // signed
-assign AUDIO_MIX = 0; // no mix, true stereo
+assign AUDIO_S = 1;
+assign AUDIO_MIX = 0;
 
 assign LED_DISK  = 0;
 assign LED_POWER = 0;
 assign LED_USER  = ioctl_download;
 assign BUTTONS = 0;
-
-///////////////////////////////////////////////////
 
 wire [1:0] ar = status[14:13];
 
@@ -70,10 +68,6 @@ localparam CONF_STR = {
 	"P1OB,HDMI Flip,Off,On;",
 	"P1OM,CRT Flip,Off,On;",
 	"P1OFH,Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	// DIAG-REVERT-2026-09-01: Screen Centering added for analog/CRT use. Same status
-	// bits and same label convention as Vastar (two's complement: 0, +1..+7, -8..-1).
-	// V Center is 3 bits, not 4 -- this board only has 20 lines of vblank, so +-4 is
-	// the most that keeps the vsync pulse off visible lines. See Kangaroo_CPU.sv.
 	"P1O36,H Center,0,+1,+2,+3,+4,+5,+6,+7,-8,-7,-6,-5,-4,-3,-2,-1;",
 	"P1O79,V Center,0,+1,+2,+3,-4,-3,-2,-1;",
 	"-;",
@@ -141,7 +135,6 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 	.ps2_key(ps2_key)
 );
 
-////////////////////   CLOCKS   ///////////////////
 wire CLK_40M;
 wire CLK_10M;
 wire locked;
@@ -155,17 +148,12 @@ pll pll
     .locked(locked)
 );
 
-assign CLK_VIDEO = CLK_40M;   // HDMI needs the 40 MHz reference
+assign CLK_VIDEO = CLK_40M;
 
 wire reset = RESET | status[0] | buttons[1] | ioctl_download;
 
-///////////////////         Keyboard           //////////////////
-
-// ctl_keyboard (controllers.sv; its instance sits after pause_cpu below), left Shift through its extra-key table
-// kb: [0] up [1] down [2] left [3] right [4] Ctrl [5] Alt [6] 1 [7] 2 [8] 5 [9] 6 [10] 9 [11] T [12] P
-// kbx: [0] left Shift (Draw Fast, not wired to the board)
 /* verilator lint_off UNUSED */
-wire [12:0] kb;                     // Alt and T are not used on this board
+wire [12:0] kb;
 wire  [0:0] kbx;
 /* verilator lint_on UNUSED */
 wire btn_up       = kb[0];
@@ -180,48 +168,34 @@ wire btn_2p_start = kb[7];
 wire btn_pause    = kb[12];
 wire btn_service  = kb[10];
 
-//////////////////  Game select (mod byte, MRA <rom index="5">)  ///////////////////////////
-// MRA `<rom index="5"><part>01</part></rom>` => Funky Fish; absent => Kangaroo (mod = 0).
 reg  [7:0] core_mod = 8'd0;
-// No reset on download start: the index-4 NVRAM load re-raises ioctl_download after the mod
-// byte is captured, which would clear it again.
 always @(posedge CLK_10M)
 	if (ioctl_wr & (ioctl_index == 8'd5))
 		core_mod <= ioctl_dout;
 wire is_funkyfish = (core_mod == 8'd1);
-// index-5 bit1 = MB8841 fitted. Bootleg and Funky Fish leave it clear and use the boot-pulse NMI path.
 wire mcu_present = core_mod[1];
 
-//////////////////  Arcade Buttons/Interfaces   ///////////////////////////
-
-//Player 1
-// joystick_0[4] (Button 1) is the Kangaroo jump-assist hack, so it is not an UP source on Funky Fish.
 wire m_up1      = btn_up        | joystick_0[3]  | (is_funkyfish ? 1'b0 : joystick_0[4]);
 wire m_down1    = btn_down      | joystick_0[2];
 wire m_left1    = btn_left      | joystick_0[1];
 wire m_right1   = btn_right     | joystick_0[0];
 wire m_punch_p1 = btn_fire      | joystick_0[5];
 
-//Player 2
 wire m_up2      = btn_up		| joystick_1[3]  | (is_funkyfish ? 1'b0 : joystick_1[4]);
 wire m_down2    = btn_down      | joystick_1[2];
 wire m_left2    = btn_left      | joystick_1[1];
 wire m_right2   = btn_right     | joystick_1[0];
 wire m_punch_p2 = btn_fire      | joystick_1[5];
 
-//Start/Coin
 wire m_start1   = btn_1p_start  | joystick_0[7];
 wire m_start2   = btn_2p_start  | joystick_0[8];
 wire m_coin1    = btn_coin1     | joystick_0[6];
 wire m_coin2    = btn_coin2     | joystick_1[6];
 wire m_pause    = btn_pause     | joystick_0[9];
 
-//Service Mode
 wire m_service  = btn_service                  ;
 
-// PAUSE SYSTEM
 wire pause_cpu;
-// keyboard (see Keyboard above); held keys keep tracking while paused
 ctl_keyboard #(.NX(1), .NXO(1), .XKEYS(24'h10_12_00)) u_kb(.clk(CLK_10M), .ps2_key(ps2_key), .pause(pause_cpu), .kb(kb),
 	.kbx(kbx));
 wire [23:0] rgb_out;
@@ -234,31 +208,27 @@ pause #(8,8,8,10) pause
 	.options(~status[26:25])
 );
 
-///////////////                 Video                  ////////////////
-
 wire hblank, vblank;
 wire hs, vs;
 wire [7:0] r, g, b;
 wire ce_pix;
 
-// 2x pixel clock: arcade_video renders 512 px/line (each of the 256 source columns doubled)
-// for the dimmed-copy interleave, and the scaler shrinks it back. ce_pix must be a
-// CLK_40M-domain pulse; phase ==2 samples after the core's RGB has settled.
+// ce_pix must be a CLK_40M-domain pulse; phase 2 samples after the core's RGB has settled
 reg [1:0] ce_pix_div = 2'd0;
 always @(posedge CLK_40M) ce_pix_div <= ce_pix_div + 1'd1;
-wire ce_pix_2x = (ce_pix_div == 2'd2);   // 10 MHz, 1-in-4 of CLK_40M
+wire ce_pix_2x = (ce_pix_div == 2'd2);
 
-wire rotate_ccw = 0;  // Kangaroo is ROT90 (CW)
+wire rotate_ccw = 0;
 wire no_rotate = status[12] | direct_video;
 wire flip = status[11] | ~no_rotate;
 screen_rotate screen_rotate(.*);
 
-arcade_video #(512,24) arcade_video   // 512 px/line: 256 columns doubled, the scaler reduces
+arcade_video #(512,24) arcade_video
 (
 	.*,
 
 	.clk_video(CLK_40M),
-	.ce_pix(ce_pix_2x),   // 10 MHz, overriding the core's 5 MHz ce_pix that .* would pick
+	.ce_pix(ce_pix_2x),
 
 	.RGB_in(rgb_out),
 	.HBlank(hblank),
@@ -269,8 +239,6 @@ arcade_video #(512,24) arcade_video   // 512 px/line: 256 columns doubled, the s
 	.fx(status[17:15])
 );
 
-// DIP switch
-// DIPs arrive from the OSD via ioctl index 254, not status. sw0 = DSW0, read at $E400.
 reg [7:0] dip_sw[8] = '{8'h00,8'h00,8'h00,8'h00,8'h00,8'h00,8'h00,8'h00};
 always @(posedge CLK_10M) begin
 	if (ioctl_wr && (ioctl_index == 8'd254) && !ioctl_addr[24:3])
@@ -278,18 +246,14 @@ always @(posedge CLK_10M) begin
 end
 wire [7:0] sw0 = dip_sw[0];
 
-//Instantiate Kangaroo top-level game module
 kangaroo_dispatcher kangaroo_inst
 (
-	.reset(~reset),       // MiSTer reset is active-high; invert for active-low game modules
+	.reset(~reset),
 
 	.clk_10m(CLK_10M),
 
-	// IN0: {coin_r, coin_l, start2, start1, service} active-high
 	.in0({m_coin2, m_coin1, m_start2, m_start1, m_service}),
-	// IN1: {punch, down, up, left, right} P1 active-high
 	.in1({3'b00, m_punch_p1, m_down1, m_up1, m_left1, m_right1}),
-	// IN2: {punch, down, up, left, right} P2 active-high
 	.in2({3'b00, m_punch_p2, m_down2, m_up2, m_left2, m_right2}),
 	.dsw0(sw0),
 
@@ -301,8 +265,8 @@ kangaroo_dispatcher kangaroo_inst
 	.video_hblank(hblank),
 	.ce_pix(ce_pix),
 
-	.h_center(status[6:3]),    // DIAG-REVERT-2026-09-01
-	.v_center(status[9:7]),    // DIAG-REVERT-2026-09-01
+	.h_center(status[6:3]),
+	.v_center(status[9:7]),
 
 	.video_r(r),
 	.video_g(g),
@@ -325,8 +289,6 @@ kangaroo_dispatcher kangaroo_inst
 	.hs_write(hs_write_enable)
 );
 
-// HISCORE SYSTEM — hiscore.v v0014. Score access uses the work-RAM port B in Kangaroo_CPU.sv.
-// Config = MRA index 3, dump = index 4.
 wire [15:0] hs_address;
 wire [7:0]  hs_data_in;
 wire [7:0]  hs_data_out;
